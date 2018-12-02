@@ -3,7 +3,7 @@ A library for BASIC authentication for jetty9
 
 It is licensed under [MIT](https://opensource.org/licenses/MIT).
 
-# How to use (for Eclipse User)
+# Usage
 
 ## Enable BASIC authentication when you use ServletContextHandler
 
