@@ -28,4 +28,14 @@ Use BasicAuthResourceHandler instead of ResourceHandler
                 .addUserPath("user2", "pass2", "/private2/*")
                 .build());
 ```
+## Download/Install
 
+**Maven**
+
+```xml
+<dependency>
+	<groupId>org.riversun</groupId>
+	<artifactId>jetty-basic-auth-helper</artifactId>
+	<version>0.5.0</version>
+</dependency>
+```
