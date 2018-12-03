@@ -1,27 +1,27 @@
-/* 
+/*
  * 
- *  jetty-basic-auth-helper
+ * jetty-basic-auth-helper
  * 
- *  Copyright (c) 2006-2018 Tom Misawa, riversun.org@gmail.com
- *  
- *  Permission is hereby granted, free of charge, to any person obtaining a
- *  copy of this software and associated documentation files (the "Software"),
- *  to deal in the Software without restriction, including without limitation
- *  the rights to use, copy, modify, merge, publish, distribute, sublicense,
- *  and/or sell copies of the Software, and to permit persons to whom the
- *  Software is furnished to do so, subject to the following conditions:
- *  
- *  The above copyright notice and this permission notice shall be included in
- *  all copies or substantial portions of the Software.
- *  
- *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- *  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- *  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- *  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- *  DEALINGS IN THE SOFTWARE.
- *  
+ * Copyright (c) 2006-2018 Tom Misawa, riversun.org@gmail.com
+ * 
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ * 
  */
 package org.riversun.jetty.basicauth;
 
@@ -44,6 +44,7 @@ import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.util.security.Constraint;
 import org.eclipse.jetty.util.security.Password;
 import org.riversun.jetty.basicauth.BasicAuth.UserPath;
+import org.riversun.jetty.basicauth.BasicAuthLogicCore.SkipBasicAuthCallback;
 
 /**
  * BasicAuthSecurityHandler
@@ -53,7 +54,7 @@ import org.riversun.jetty.basicauth.BasicAuth.UserPath;
 public class BasicAuthSecurityHandler extends ConstraintSecurityHandler {
 
     private BasicAuth mBasicAuth;
-    private BasicAuthLogicCore core = new BasicAuthLogicCore();
+    private BasicAuthLogicCore mBasicAuthLogic = new BasicAuthLogicCore();
 
     /**
      * Set the condition of basic authentication
@@ -64,7 +65,7 @@ public class BasicAuthSecurityHandler extends ConstraintSecurityHandler {
     public BasicAuthSecurityHandler setBasicAuth(BasicAuth basicAuth) {
 
         this.mBasicAuth = basicAuth;
-        core.setBasicAuth(basicAuth);
+        mBasicAuthLogic.setBasicAuth(basicAuth);
         init();
         return BasicAuthSecurityHandler.this;
 
@@ -153,7 +154,7 @@ public class BasicAuthSecurityHandler extends ConstraintSecurityHandler {
         boolean needBasicAuth = true;
 
         if (needBasicAuth) {
-            boolean isAuthenticationSuccess = core.handle("", baseRequest, request, response);
+            boolean isAuthenticationSuccess = mBasicAuthLogic.handle("", baseRequest, request, response);
             if (isAuthenticationSuccess) {
                 // SKIP auth
                 getHandler().handle(pathInContext, baseRequest, request, response);
@@ -162,6 +163,43 @@ public class BasicAuthSecurityHandler extends ConstraintSecurityHandler {
             // IP range passed
         }
 
+    }
+
+    /**
+     * Add path to ignore #setRetryBasicAuth effect
+     * 
+     * @param path
+     * @return
+     */
+    public BasicAuthSecurityHandler addRetryBasicAuthExcludedPath(String path) {
+        mBasicAuthLogic.addRetryBasicAuthExcludedPath(path);
+        return BasicAuthSecurityHandler.this;
+    }
+
+    /**
+     * Enabling retry of basic authentication when authorization failed
+     * 
+     * If the user-A who has already passed the BASIC authentication for page-A.
+     * Then the user-A who doesn't have the permission for page-B tries to access
+     * page-B.
+     * 
+     * True:Show BASIC authentication dialog again for the user who has correct
+     * permission for page-B.
+     * 
+     * False:Show error page that shows FORBIDDEN, "You don't have permission to
+     * access."
+     * 
+     * @param enabled
+     * @return
+     */
+    public BasicAuthSecurityHandler setRetryBasicAuth(boolean enabled) {
+        mBasicAuthLogic.setRetryBasicAuth(enabled);
+        return BasicAuthSecurityHandler.this;
+    }
+
+    public BasicAuthSecurityHandler setSkipBasicAuthCallback(SkipBasicAuthCallback listener) {
+        mBasicAuthLogic.setSkipBasicAuthCallback(listener);
+        return BasicAuthSecurityHandler.this;
     }
 
     /**
