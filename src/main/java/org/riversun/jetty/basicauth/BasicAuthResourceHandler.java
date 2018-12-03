@@ -42,63 +42,67 @@ import org.riversun.jetty.basicauth.BasicAuthLogicCore.SkipBasicAuthCallback;
  */
 public class BasicAuthResourceHandler extends ResourceHandler {
 
-    private BasicAuthLogicCore mBasicAuthLogic = new BasicAuthLogicCore();
+	private BasicAuthLogicCore mBasicAuthLogic = new BasicAuthLogicCore();
 
-    /**
-     * Set the condition of basic authentication
-     * 
-     * @param basicAuth
-     * @return
-     */
-    public BasicAuthResourceHandler setBasicAuth(BasicAuth basicAuth) {
+	/**
+	 * Set the condition of basic authentication
+	 * 
+	 * @param basicAuth
+	 * @return
+	 */
+	public BasicAuthResourceHandler setBasicAuth(BasicAuth basicAuth) {
 
-        mBasicAuthLogic.setBasicAuth(basicAuth);
+		mBasicAuthLogic.setBasicAuth(basicAuth);
 
-        return BasicAuthResourceHandler.this;
-    }
+		return BasicAuthResourceHandler.this;
+	}
 
-    @Override
-    public void handle(String target, Request baseRequest, HttpServletRequest req, HttpServletResponse resp) throws IOException, ServletException {
+	@Override
+	public void handle(String target, Request baseRequest, HttpServletRequest req, HttpServletResponse resp) throws IOException, ServletException {
 
-        mBasicAuthLogic.handle(target, baseRequest, req, resp);
+		mBasicAuthLogic.setWelcomeFilesAndRelatedPaths(getWelcomeFiles());
 
-    }
+		if (mBasicAuthLogic.handle(target, baseRequest, req, resp)) {
+			super.handle(target, baseRequest, req, resp);
+		}
 
-    /**
-     * Add path to ignore #setRetryBasicAuth effect
-     * 
-     * @param path
-     * @return
-     */
-    public BasicAuthResourceHandler addRetryBasicAuthExcludedPath(String path) {
-        mBasicAuthLogic.addRetryBasicAuthExcludedPath(path);
-        return BasicAuthResourceHandler.this;
-    }
+	}
 
-    /**
-     * Enabling retry of basic authentication when authorization failed
-     * 
-     * If the user-A who has already passed the BASIC authentication for page-A.
-     * Then the user-A who doesn't have the permission for page-B tries to access
-     * page-B.
-     * 
-     * True:Show BASIC authentication dialog again for the user who has correct
-     * permission for page-B.
-     * 
-     * False:Show error page that shows FORBIDDEN, "You don't have permission to
-     * access."
-     * 
-     * @param enabled
-     * @return
-     */
-    public BasicAuthResourceHandler setRetryBasicAuth(boolean enabled) {
-        mBasicAuthLogic.setRetryBasicAuth(enabled);
-        return BasicAuthResourceHandler.this;
-    }
+	/**
+	 * Add path to ignore #setRetryBasicAuth effect
+	 * 
+	 * @param path
+	 * @return
+	 */
+	public BasicAuthResourceHandler addRetryBasicAuthExcludedPath(String path) {
+		mBasicAuthLogic.addRetryBasicAuthExcludedPath(path);
+		return BasicAuthResourceHandler.this;
+	}
 
-    public BasicAuthResourceHandler setsetSkipBasicAuthCallback(SkipBasicAuthCallback listener) {
-        mBasicAuthLogic.setSkipBasicAuthCallback(listener);
-        return BasicAuthResourceHandler.this;
-    }
+	/**
+	 * Enabling retry of basic authentication when authorization failed
+	 * 
+	 * If the user-A who has already passed the BASIC authentication for page-A.
+	 * Then the user-A who doesn't have the permission for page-B tries to access
+	 * page-B.
+	 * 
+	 * True:Show BASIC authentication dialog again for the user who has correct
+	 * permission for page-B.
+	 * 
+	 * False:Show error page that shows FORBIDDEN, "You don't have permission to
+	 * access."
+	 * 
+	 * @param enabled
+	 * @return
+	 */
+	public BasicAuthResourceHandler setRetryBasicAuth(boolean enabled) {
+		mBasicAuthLogic.setRetryBasicAuth(enabled);
+		return BasicAuthResourceHandler.this;
+	}
+
+	public BasicAuthResourceHandler setsetSkipBasicAuthCallback(SkipBasicAuthCallback listener) {
+		mBasicAuthLogic.setSkipBasicAuthCallback(listener);
+		return BasicAuthResourceHandler.this;
+	}
 
 }

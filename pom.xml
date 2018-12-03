@@ -5,7 +5,7 @@
 
 	<groupId>org.riversun</groupId>
 	<artifactId>jetty-basic-auth-helper</artifactId>
-	<version>0.6.0</version>
+	<version>0.6.1</version>
 	<packaging>jar</packaging>
 	<name>jetty-basic-auth-helper</name>
 	<description>Basic authentication helper library for jetty9
