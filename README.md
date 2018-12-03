@@ -3,6 +3,8 @@ A library for BASIC authentication for jetty9
 
 It is licensed under [MIT](https://opensource.org/licenses/MIT).
 
+[![Maven Central](https://maven-badges.herokuapp.com/maven-central/org.riversun/jetty-basic-auth-helper/badge.svg)](https://maven-badges.herokuapp.com/maven-central/org.riversun/jetty-basic-auth-helper)
+
 # Usage
 
 ## Enable BASIC authentication when you use ServletContextHandler
