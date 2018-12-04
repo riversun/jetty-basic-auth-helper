@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.logging.Logger;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
@@ -47,368 +48,386 @@ import org.riversun.jetty.basicauth.BasicAuth.UserPath;
  * @author Tom Misawa (riversun.org@gmail.com)
  */
 public class BasicAuthLogicCore {
+    private static final Logger LOGGER = Logger.getLogger(BasicAuthLogicCore.class.getName());
+    private BasicAuth mBasicAuthCondition;
+    private final Map<String, List<UserPath>> mPathSpecUserMap = new LinkedHashMap<>();
+    private boolean mForceShowDialogWhenNotAuthed = true;
 
-	private BasicAuth mBasicAuthCondition;
-	private final Map<String, List<UserPath>> mPathSpecUserMap = new LinkedHashMap<>();
-	private boolean mForceShowDialogWhenNotAuthed = true;
+    private final List<String> mRetryBasicAuthExcludedPath = new CopyOnWriteArrayList<>();
 
-	private final List<String> mRetryBasicAuthExcludedPath = new CopyOnWriteArrayList<>();
+    private String[] mWelcomeFiles = null;
 
-	private String[] mWelcomeFiles = null;
+    public static interface SkipBasicAuthCallback {
+        /**
+         * 
+         * @param req
+         * @return false:skip basic auth true:do basic auth
+         */
+        public boolean checkSkipBasicAuth(HttpServletRequest req);
+    }
 
-	public static interface SkipBasicAuthCallback {
-		/**
-		 * 
-		 * @param req
-		 * @return false:skip basic auth true:do basic auth
-		 */
-		public boolean checkSkipBasicAuth(HttpServletRequest req);
-	}
+    public SkipBasicAuthCallback mSkipBasicAuthCallback;
 
-	public SkipBasicAuthCallback mSkipBasicAuthCallback;
+    public BasicAuthLogicCore() {
 
-	/**
-	 * Set the condition of basic authentication
-	 * 
-	 * @param basicAuth
-	 * @return
-	 */
-	public BasicAuthLogicCore setBasicAuth(BasicAuth basicAuth) {
+    }
 
-		this.mBasicAuthCondition = basicAuth;
+    /**
+     * Set the condition of basic authentication
+     * 
+     * @param basicAuth
+     * @return
+     */
+    public BasicAuthLogicCore setBasicAuth(BasicAuth basicAuth) {
 
-		final List<UserPath> userPathList = basicAuth.getUserPathList();
+        this.mBasicAuthCondition = basicAuth;
 
-		for (UserPath userPath : userPathList) {
+        final List<UserPath> userPathList = basicAuth.getUserPathList();
 
-			final String[] pathSpecs = userPath.pathSpecs.split(",");
+        for (UserPath userPath : userPathList) {
 
-			for (String pathSpec : pathSpecs) {
+            final String[] pathSpecs = userPath.pathSpecs.split(",");
 
-				List<UserPath> storedUserPathList = mPathSpecUserMap.get(pathSpec);
+            for (String pathSpec : pathSpecs) {
 
-				if (storedUserPathList == null) {
+                List<UserPath> storedUserPathList = mPathSpecUserMap.get(pathSpec);
 
-					storedUserPathList = new ArrayList<UserPath>();
-					mPathSpecUserMap.put(pathSpec, storedUserPathList);
+                if (storedUserPathList == null) {
 
-				}
+                    storedUserPathList = new ArrayList<UserPath>();
+                    mPathSpecUserMap.put(pathSpec, storedUserPathList);
 
-				storedUserPathList.add(userPath);
-			}
-		}
-		return BasicAuthLogicCore.this;
-	}
+                }
 
-	/**
-	 * Returns if basic authentication needed on this request
-	 * 
-	 * @param req
-	 * @return
-	 */
-	private List<UserPath> isBasicAuthNeeded(HttpServletRequest req) {
+                storedUserPathList.add(userPath);
+            }
+        }
+        return BasicAuthLogicCore.this;
+    }
 
-		final List<UserPath> allowedUserList = new ArrayList<UserPath>();
+    /**
+     * Returns if basic authentication needed on this request
+     * 
+     * @param req
+     * @return
+     */
+    private List<UserPath> isBasicAuthNeeded(HttpServletRequest req) {
 
-		final String requestUri = req.getRequestURI();
+        final List<UserPath> allowedUserList = new ArrayList<UserPath>();
 
-		final Set<String> pathSpecSet = mPathSpecUserMap.keySet();
+        final String requestUri = req.getRequestURI();
 
-		for (String pathSpec : pathSpecSet) {
+        final Set<String> pathSpecSet = mPathSpecUserMap.keySet();
 
-			final int asterPos = pathSpec.indexOf("*");
+        for (String pathSpec : pathSpecSet) {
 
-			if (asterPos >= 0) {
-				final String path = pathSpec.substring(0, asterPos);
+            final int asterPos = pathSpec.indexOf("*");
 
-				if (requestUri.startsWith(path)) {
-					allowedUserList.addAll(mPathSpecUserMap.get(pathSpec));
-				}
+            if (asterPos >= 0) {
+                final String path = pathSpec.substring(0, asterPos);
 
-			} else {
-				final String path = pathSpec;
+                if (requestUri.startsWith(path)) {
+                    allowedUserList.addAll(mPathSpecUserMap.get(pathSpec));
+                }
 
-				if (requestUri.equals(path)) {
-					// || requestUri.startsWith(pathSpec)) {
-					allowedUserList.addAll(mPathSpecUserMap.get(pathSpec));
-				}
-			}
+            } else {
+                final String path = pathSpec;
 
-		}
+                if (requestUri.equals(path)) {
+                    // || requestUri.startsWith(pathSpec)) {
+                    allowedUserList.addAll(mPathSpecUserMap.get(pathSpec));
+                }
+            }
 
-		return allowedUserList;
-	}
+        }
 
-	void log(String msg) {
+        return allowedUserList;
+    }
 
-		// TODO log
-		 System.out.println(msg);
-	}
+    /**
+     * Do welcome file and related path interpolation
+     * 
+     * @param welcomeFiles
+     */
+    void setWelcomeFilesAndRelatedPaths(String[] welcomeFiles) {
 
-	/**
-	 * Do welcome file and related path interpolation
-	 * 
-	 * @param welcomeFiles
-	 */
-	void setWelcomeFilesAndRelatedPaths(String[] welcomeFiles) {
+        if (mWelcomeFiles == null) {
 
-		if (mWelcomeFiles == null) {
+            mWelcomeFiles = welcomeFiles;
 
-			mWelcomeFiles = welcomeFiles;
+            final List<UserPath> userPathList = mBasicAuthCondition.getUserPathList();
 
-			final List<UserPath> userPathList = mBasicAuthCondition.getUserPathList();
+            for (UserPath userPath : userPathList) {
 
-			for (UserPath userPath : userPathList) {
+                final String[] pathSpecs = userPath.pathSpecs.split(",");
 
-				final String[] pathSpecs = userPath.pathSpecs.split(",");
+                for (String pathSpec : pathSpecs) {
 
-				for (String pathSpec : pathSpecs) {
+                    // check welcomefiles
+                    for (String welcomeFile : welcomeFiles) {
 
-					// check welcomefiles
-					for (String welcomeFile : welcomeFiles) {
+                        if (pathSpec.endsWith(welcomeFile)) {
+                            // pathSpecが welcomeFile で終了していた場合
+                            // たとえば pathSpecが "/index.html" のような場合
+                            // "/"をpathSpecに加えておかないとwelcomeFileへのリダイレクトに使えない
+                            // そのため "/"を加える処理をする
 
-						if (pathSpec.endsWith(welcomeFile)) {
-							// pathSpecが welcomeFile で終了していた場合
-							// たとえば pathSpecが "/index.html" のような場合
-							// "/"をpathSpecに加えておかないとwelcomeFileへのリダイレクトに使えない
-							// そのため "/"を加える処理をする
+                            final String needToAddBasePath = pathSpec.substring(0, pathSpec.length() - welcomeFile.length());
 
-							final String needToAddBasePath = pathSpec.substring(0, pathSpec.length() - welcomeFile.length());
+                            LOGGER.fine("Welcome file interpolation:need to add path='" + needToAddBasePath + "' for '" + pathSpec + "'(welcomeFile)");
 
-							log("Welcome file interpolation:need to add path='" + needToAddBasePath + "' for '" + pathSpec + "'(welcomeFile)");
+                            List<UserPath> storedUserPathList = mPathSpecUserMap.get(needToAddBasePath);
 
-							List<UserPath> storedUserPathList = mPathSpecUserMap.get(needToAddBasePath);
+                            if (storedUserPathList == null) {
 
-							if (storedUserPathList == null) {
+                                storedUserPathList = new ArrayList<UserPath>();
+                                mPathSpecUserMap.put(needToAddBasePath, storedUserPathList);
 
-								storedUserPathList = new ArrayList<UserPath>();
-								mPathSpecUserMap.put(needToAddBasePath, storedUserPathList);
+                            }
 
-							}
+                            if (!storedUserPathList.contains(userPath)) {
 
-							if (!storedUserPathList.contains(userPath)) {
+                                userPath.pathSpecs += "," + needToAddBasePath;
 
-								userPath.pathSpecs += "," + needToAddBasePath;
+                                LOGGER.fine("Welcome file interpolation:Added '" + needToAddBasePath + "' for " + userPath.userName);
+                                storedUserPathList.add(userPath);
+                            }
 
-								log("Welcome file interpolation:Added '" + needToAddBasePath + "' for " + userPath.userName);
-								storedUserPathList.add(userPath);
-							}
+                        }
+                    } // end check welcomefiles
 
-						}
-					} // end check welcomefiles
+                    //
 
-					//
+                    final String[] separatorEnds = new String[] { "/", "/*" };
+                    for (String separatorEnd : separatorEnds) {
 
-					final String[] separatorEnds = new String[] { "/", "/*" };
-					for (String separatorEnd : separatorEnds) {
+                        if (pathSpec.endsWith(separatorEnd)) {
+                            // たとえば pathSpecが "/private/" のような場合
+                            // "/private"をpathSpecに加えておかないと"/private/"へのリダイレクトに使えない
+                            // そのため "/private"を加える処理をする
 
-						if (pathSpec.endsWith(separatorEnd)) {
-							// たとえば pathSpecが "/private/" のような場合
-							// "/private"をpathSpecに加えておかないと"/private/"へのリダイレクトに使えない
-							// そのため "/private"を加える処理をする
+                            final String needToAddBasePath = pathSpec.substring(0, pathSpec.length() - separatorEnd.length());
 
-							final String needToAddBasePath = pathSpec.substring(0, pathSpec.length() - separatorEnd.length());
+                            LOGGER.fine("Path-separator interpolation:need to add path='" + needToAddBasePath + "' for '" + pathSpec + "'(welcomeFile)");
 
-							log("Path-separator interpolation:need to add path='" + needToAddBasePath + "' for '" + pathSpec + "'(welcomeFile)");
+                            List<UserPath> storedUserPathList = mPathSpecUserMap.get(needToAddBasePath);
 
-							List<UserPath> storedUserPathList = mPathSpecUserMap.get(needToAddBasePath);
+                            if (storedUserPathList == null) {
 
-							if (storedUserPathList == null) {
+                                storedUserPathList = new ArrayList<UserPath>();
+                                mPathSpecUserMap.put(needToAddBasePath, storedUserPathList);
 
-								storedUserPathList = new ArrayList<UserPath>();
-								mPathSpecUserMap.put(needToAddBasePath, storedUserPathList);
+                            }
 
-							}
+                            if (!storedUserPathList.contains(userPath)) {
 
-							if (!storedUserPathList.contains(userPath)) {
+                                userPath.pathSpecs += "," + needToAddBasePath;
 
-								userPath.pathSpecs += "," + needToAddBasePath;
+                                LOGGER.fine("Path-separator interpolation:Added '" + needToAddBasePath + "' for " + userPath.userName);
+                                storedUserPathList.add(userPath);
+                            }
 
-								log("Path-separator interpolation:Added '" + needToAddBasePath + "' for " + userPath.userName);
-								storedUserPathList.add(userPath);
-							}
+                        }
+                    }
 
-						}
-					}
+                }
+            }
 
-				}
-			}
+        }
+    }
 
-		}
-	}
+    boolean handle(String target, Request baseRequest, HttpServletRequest req, HttpServletResponse resp) throws IOException, ServletException {
 
-	boolean handle(String target, Request baseRequest, HttpServletRequest req, HttpServletResponse resp) throws IOException, ServletException {
+        if (mSkipBasicAuthCallback != null) {
+            if (mSkipBasicAuthCallback.checkSkipBasicAuth(req)) {
+                // - If true, skip basic authentication process
+                return true;
+            }
+        }
 
-		if (mSkipBasicAuthCallback != null) {
-			if (mSkipBasicAuthCallback.checkSkipBasicAuth(req)) {
-				// - If true, skip basic authentication process
-				return true;
-			}
-		}
+        final String requestUri = req.getRequestURI();
+        LOGGER.fine("requestUri=" + requestUri);
 
-		final String requestUri = req.getRequestURI();
-		log("requestUri=" + requestUri);
+        // Example request header of basic authentication
+        // Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ{{=}}{{=}}
+        String authHeader = req.getHeader("Authorization");
 
-		// Example request header of basic authentication
-		// Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ{{=}}{{=}}
-		String authHeader = req.getHeader("Authorization");
+        List<UserPath> permitUserList = isBasicAuthNeeded(req);
 
-		List<UserPath> permitUserList = isBasicAuthNeeded(req);
+        if (permitUserList != null && permitUserList.size() > 0) {
 
-		if (permitUserList != null && permitUserList.size() > 0) {
+            // - When there is target-user-list for accessing this path
+            // (so need to authenticate)
 
-			// - When there is target-user-list for accessing this path
-			// (so need to authenticate)
+            if (authHeader != null && authHeader.startsWith("Basic ")) {
 
-			if (authHeader != null && authHeader.startsWith("Basic ")) {
+                // - If there is authentication information for BASIC authentication
 
-				// - If there is authentication information for BASIC authentication
+                // Get the right hand of "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ{{=}}{{=}}"
+                // u know,
+                // that is the base64 data part.
+                String base64encodedUserColonPassPart = authHeader.substring(authHeader.indexOf(" ") + 1);
 
-				// Get the right hand of "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ{{=}}{{=}}"
-				// u know,
-				// that is the base64 data part.
-				String base64encodedUserColonPassPart = authHeader.substring(authHeader.indexOf(" ") + 1);
+                _User user = parseAuthUserFromBase64(base64encodedUserColonPassPart);
 
-				_User user = parseAuthUserFromBase64(base64encodedUserColonPassPart);
+                LOGGER.fine("Access from user:userNmae=" + user.userName + " pass=" + user.password + " for path=" + requestUri);
 
-				boolean isAuthenticated = false;
+                boolean isAuthenticated = false;
+                UserPath finalAllowedUser = null;
+                for (UserPath allowedUser : permitUserList) {
+                    if (allowedUser.userName.equals(user.userName) && allowedUser.password.equals(user.password)) {
+                        // - User is matched
+                        isAuthenticated = true;
+                        finalAllowedUser = allowedUser;
+                        break;
+                    }
+                }
 
-				for (UserPath allowedUser : permitUserList) {
-					if (allowedUser.userName.equals(user.userName) && allowedUser.password.equals(user.password)) {
-						// - User is matched
-						isAuthenticated = true;
-						break;
-					}
-				}
+                if (isAuthenticated) {
+                    // - is authenticated
 
-				if (isAuthenticated) {
-					// - is authenticated
+                    LOGGER.fine("Authentication success! user:userNmae=" + user.userName + " has permission to access " + finalAllowedUser.pathSpecs);
 
-					return true;
+                    return true;
 
-				} else {
-					// - is not authenticated
+                } else {
+                    // - is not authenticated
 
-					for (String excludedPath : mRetryBasicAuthExcludedPath) {
+                    Map<String, UserPath> userNameUserPathMap = mBasicAuthCondition.getUserNameUserPathMap();
+                    if (userNameUserPathMap != null) {
+                        final UserPath userPath = userNameUserPathMap.get(user.userName);
+                        if (userPath != null) {
+                            LOGGER.fine("Authentication fail! user:userNmae=" + user.userName + " don't have permission to access " + requestUri +
+                                    " user has permission to access " + userPath.pathSpecs);
+                        }
+                    }
 
-						// Ignore forceShowDialogWhenNoAuthed option when requesting favicon.
-						if (excludedPath.equals(requestUri)) {
-							resp.sendError(HttpServletResponse.SC_FORBIDDEN, "You don't have permission to access.");
-							return false;
-						}
-					}
+                    for (String excludedPath : mRetryBasicAuthExcludedPath) {
 
-					if (mForceShowDialogWhenNotAuthed) {
-						// - Is this option is true,
-						// force to show basic authentication dialog again!
+                        // Ignore forceShowDialogWhenNoAuthed option when requesting favicon.
+                        if (excludedPath.equals(requestUri)) {
 
-						// Even if the authentication information has been sent
-						// BUT is not the authentication information for this path.
+                            LOGGER.fine("ExcludedPath found " + requestUri + " send forbidden message");
 
-						// Show basic authentication dialog again!
-						final String realm = mBasicAuthCondition.getRealm();
+                            resp.sendError(HttpServletResponse.SC_FORBIDDEN, "You don't have permission to access.");
+                            return false;
+                        }
+                    }
 
-						// Below is the server response to tell that authentication is required
-						resp.setHeader("WWW-Authenticate", "BASIC realm=\"" + realm + "\"");
-						resp.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Authorization Required");
-					} else {
+                    if (mForceShowDialogWhenNotAuthed) {
+                        // - Is this option is true,
+                        // force to show basic authentication dialog again!
 
-						resp.sendError(HttpServletResponse.SC_FORBIDDEN, "You don't have permission to access.");
-					}
-					return false;
-				}
+                        // Even if the authentication information has been sent
+                        // BUT is not the authentication information for this path.
 
-			} else {
+                        // Show basic authentication dialog again!
+                        final String realm = mBasicAuthCondition.getRealm();
 
-				// - If there is no authentication information for BASIC authentication
-				// That means that user need to authenticate now
-				final String realm = mBasicAuthCondition.getRealm();
+                        // Below is the server response to tell that authentication is required
+                        resp.setHeader("WWW-Authenticate", "BASIC realm=\"" + realm + "\"");
+                        resp.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Authorization Required");
+                    } else {
 
-				// Below is the server response to tell that authentication is required
-				resp.setHeader("WWW-Authenticate", "BASIC realm=\"" + realm + "\"");
-				resp.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Authorization Required");
-			}
-		} else {
-			// - If the user list that allowed to access this path , does not exist
-			// (So it's possible to access thie page without authentication)
-			// super.handle(target, baseRequest, req, resp);
-			return true;
-		}
+                        resp.sendError(HttpServletResponse.SC_FORBIDDEN, "You don't have permission to access.");
+                    }
+                    return false;
+                }
 
-		return false;
-	}
+            } else {
 
-	/**
-	 * Set OnPrepareBasicAuthListener
-	 * 
-	 * @param callback
-	 */
-	public void setSkipBasicAuthCallback(SkipBasicAuthCallback callback) {
-		mSkipBasicAuthCallback = callback;
-	}
+                // - If there is no authentication information for BASIC authentication
+                // That means that user need to authenticate now
+                final String realm = mBasicAuthCondition.getRealm();
 
-	private String decodeBase64Str(String base64encodedStr) {
-		final byte[] decodedBytes = Base64.getDecoder().decode(base64encodedStr.getBytes());
-		final String decodedStr = new String(decodedBytes);
-		return decodedStr;
-	}
+                // Below is the server response to tell that authentication is required
+                resp.setHeader("WWW-Authenticate", "BASIC realm=\"" + realm + "\"");
+                resp.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Authorization Required");
+            }
+        } else {
+            // - If the user list that allowed to access this path , does not exist
+            // (So it's possible to access thie page without authentication)
+            // super.handle(target, baseRequest, req, resp);
 
-	private static class _User {
-		public String userName;
-		public String password;
-	}
+            LOGGER.fine("No authentication is needed.Free to access. " + requestUri);
 
-	/**
-	 * Parsing user name and password from Base64 string
-	 * 
-	 * @param enbase64encodedUserColonPassPart
-	 * @return
-	 */
-	private _User parseAuthUserFromBase64(String enbase64encodedUserColonPassPart) {
+            return true;
+        }
 
-		final String userColonPassStr = decodeBase64Str(enbase64encodedUserColonPassPart);
-		final int firstColonPos = decodeBase64Str(enbase64encodedUserColonPassPart).indexOf(":");
+        return false;
+    }
 
-		final _User user = new _User();
+    /**
+     * Set OnPrepareBasicAuthListener
+     * 
+     * @param callback
+     */
+    public void setSkipBasicAuthCallback(SkipBasicAuthCallback callback) {
+        mSkipBasicAuthCallback = callback;
+    }
 
-		if (firstColonPos >= 0) {
-			user.userName = userColonPassStr.substring(0, firstColonPos);
-			user.password = userColonPassStr.substring(firstColonPos + 1);
-		} else {
-			user.userName = userColonPassStr;
-		}
-		return user;
-	}
+    private String decodeBase64Str(String base64encodedStr) {
+        final byte[] decodedBytes = Base64.getDecoder().decode(base64encodedStr.getBytes());
+        final String decodedStr = new String(decodedBytes);
+        return decodedStr;
+    }
 
-	/**
-	 * Add path to ignore #setRetryBasicAuth effect
-	 * 
-	 * @param path
-	 * @return
-	 */
-	public BasicAuthLogicCore addRetryBasicAuthExcludedPath(String path) {
-		mRetryBasicAuthExcludedPath.add(path);
-		return BasicAuthLogicCore.this;
-	}
+    private static class _User {
+        public String userName;
+        public String password;
+    }
 
-	/**
-	 * Enabling retry of basic authentication when authorization failed
-	 * 
-	 * If the user-A who has already passed the BASIC authentication for page-A.
-	 * Then the user-A who doesn't have the permission for page-B tries to access
-	 * page-B.
-	 * 
-	 * True:Show BASIC authentication dialog again for the user who has correct
-	 * permission for page-B.
-	 * 
-	 * False:Show error page that shows FORBIDDEN, "You don't have permission to
-	 * access."
-	 * 
-	 * @param enabled
-	 * @return
-	 */
-	public BasicAuthLogicCore setRetryBasicAuth(boolean enabled) {
-		mForceShowDialogWhenNotAuthed = enabled;
-		return BasicAuthLogicCore.this;
-	}
+    /**
+     * Parsing user name and password from Base64 string
+     * 
+     * @param enbase64encodedUserColonPassPart
+     * @return
+     */
+    private _User parseAuthUserFromBase64(String enbase64encodedUserColonPassPart) {
+
+        final String userColonPassStr = decodeBase64Str(enbase64encodedUserColonPassPart);
+        final int firstColonPos = decodeBase64Str(enbase64encodedUserColonPassPart).indexOf(":");
+
+        final _User user = new _User();
+
+        if (firstColonPos >= 0) {
+            user.userName = userColonPassStr.substring(0, firstColonPos);
+            user.password = userColonPassStr.substring(firstColonPos + 1);
+        } else {
+            user.userName = userColonPassStr;
+        }
+        return user;
+    }
+
+    /**
+     * Add path to ignore #setRetryBasicAuth effect
+     * 
+     * @param path
+     * @return
+     */
+    public BasicAuthLogicCore addRetryBasicAuthExcludedPath(String path) {
+        mRetryBasicAuthExcludedPath.add(path);
+        return BasicAuthLogicCore.this;
+    }
+
+    /**
+     * Enabling retry of basic authentication when authorization failed
+     * 
+     * If the user-A who has already passed the BASIC authentication for page-A.
+     * Then the user-A who doesn't have the permission for page-B tries to access
+     * page-B.
+     * 
+     * True:Show BASIC authentication dialog again for the user who has correct
+     * permission for page-B.
+     * 
+     * False:Show error page that shows FORBIDDEN, "You don't have permission to
+     * access."
+     * 
+     * @param enabled
+     * @return
+     */
+    public BasicAuthLogicCore setRetryBasicAuth(boolean enabled) {
+        mForceShowDialogWhenNotAuthed = enabled;
+        return BasicAuthLogicCore.this;
+    }
 }
