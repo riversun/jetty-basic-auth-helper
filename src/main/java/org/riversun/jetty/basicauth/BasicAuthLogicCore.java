@@ -163,38 +163,40 @@ public class BasicAuthLogicCore {
 
                 for (String pathSpec : pathSpecs) {
 
-                    // check welcomefiles
-                    for (String welcomeFile : welcomeFiles) {
+                    if (welcomeFiles != null) {
+                        // check welcomefiles
+                        for (String welcomeFile : welcomeFiles) {
 
-                        if (pathSpec.endsWith(welcomeFile)) {
-                            // pathSpecが welcomeFile で終了していた場合
-                            // たとえば pathSpecが "/index.html" のような場合
-                            // "/"をpathSpecに加えておかないとwelcomeFileへのリダイレクトに使えない
-                            // そのため "/"を加える処理をする
+                            if (pathSpec.endsWith(welcomeFile)) {
+                                // pathSpecが welcomeFile で終了していた場合
+                                // たとえば pathSpecが "/index.html" のような場合
+                                // "/"をpathSpecに加えておかないとwelcomeFileへのリダイレクトに使えない
+                                // そのため "/"を加える処理をする
 
-                            final String needToAddBasePath = pathSpec.substring(0, pathSpec.length() - welcomeFile.length());
+                                final String needToAddBasePath = pathSpec.substring(0, pathSpec.length() - welcomeFile.length());
 
-                            LOGGER.fine("Welcome file interpolation:need to add path='" + needToAddBasePath + "' for '" + pathSpec + "'(welcomeFile)");
+                                LOGGER.fine("Welcome file interpolation:need to add path='" + needToAddBasePath + "' for '" + pathSpec + "'(welcomeFile)");
 
-                            List<UserPath> storedUserPathList = mPathSpecUserMap.get(needToAddBasePath);
+                                List<UserPath> storedUserPathList = mPathSpecUserMap.get(needToAddBasePath);
 
-                            if (storedUserPathList == null) {
+                                if (storedUserPathList == null) {
 
-                                storedUserPathList = new ArrayList<UserPath>();
-                                mPathSpecUserMap.put(needToAddBasePath, storedUserPathList);
+                                    storedUserPathList = new ArrayList<UserPath>();
+                                    mPathSpecUserMap.put(needToAddBasePath, storedUserPathList);
+
+                                }
+
+                                if (!storedUserPathList.contains(userPath)) {
+
+                                    userPath.pathSpecs += "," + needToAddBasePath;
+
+                                    LOGGER.fine("Welcome file interpolation:Added '" + needToAddBasePath + "' for " + userPath.userName);
+                                    storedUserPathList.add(userPath);
+                                }
 
                             }
-
-                            if (!storedUserPathList.contains(userPath)) {
-
-                                userPath.pathSpecs += "," + needToAddBasePath;
-
-                                LOGGER.fine("Welcome file interpolation:Added '" + needToAddBasePath + "' for " + userPath.userName);
-                                storedUserPathList.add(userPath);
-                            }
-
-                        }
-                    } // end check welcomefiles
+                        } // end check welcomefiles
+                    }
 
                     //
 

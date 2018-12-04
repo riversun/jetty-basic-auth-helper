@@ -143,6 +143,10 @@ public class BasicAuthSecurityHandler extends ConstraintSecurityHandler {
 
     }
 
+    public void setWelcomeFiles(String[] welcomeFiles) {
+        mBasicAuthLogic.setWelcomeFilesAndRelatedPaths(welcomeFiles);
+    }
+
     /////
     @Override
     public void handle(String pathInContext, Request baseRequest, HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
